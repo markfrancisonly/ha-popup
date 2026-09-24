@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from . import DATA_HTTP
 from .const import DOMAIN
 
 
@@ -38,23 +39,19 @@ class PopupStatusSensor(SensorEntity):
         )
 
     @property
-    def _data(self) -> dict:
-        return self._hass.data[DOMAIN]
-
-    @property
     def native_value(self) -> str:
-        return self._data["version"]
+        return self._hass.data[DOMAIN]["version"]
 
     @property
     def extra_state_attributes(self) -> dict:
-        return {"browsers": self._data["clients"]}
+        return {"browsers": self._hass.data[DATA_HTTP]["clients"]}
 
     async def async_added_to_hass(self) -> None:
         @callback
         def notify() -> None:
             self.async_write_ha_state()
 
-        self._data["notify"] = notify
+        self._hass.data[DATA_HTTP]["notify"] = notify
 
     async def async_will_remove_from_hass(self) -> None:
-        self._data["notify"] = lambda: None
+        self._hass.data[DATA_HTTP]["notify"] = lambda: None

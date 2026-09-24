@@ -38,7 +38,9 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.SENSOR]
 CARD_PATH = Path(__file__).parent / "www" / CARD_FILENAME
-DATA_HTTP = f"{DOMAIN}_http"  # views and the websocket command register once per process
+# Process-level state: the view and websocket command register once, and the
+# subscription count lives here so it survives a reload of the entry.
+DATA_HTTP = f"{DOMAIN}_http"
 
 OPEN_SCHEMA = vol.All(
     vol.Schema(
@@ -134,19 +136,16 @@ async def ws_subscribe(
         hass.bus.async_listen(EVENT_OPEN, forward),
         hass.bus.async_listen(EVENT_CLOSE, forward),
     )
-    data = hass.data.get(DOMAIN)
-    if data:
-        data["clients"] += 1
-        data["notify"]()
+    proc = hass.data[DATA_HTTP]
+    proc["clients"] += 1
+    proc["notify"]()
 
     @callback
     def unsub_all() -> None:
         for unsubscribe in unsubs:
             unsubscribe()
-        data = hass.data.get(DOMAIN)
-        if data:
-            data["clients"] -= 1
-            data["notify"]()
+        proc["clients"] = max(0, proc["clients"] - 1)
+        proc["notify"]()
 
     connection.subscriptions[msg["id"]] = unsub_all
     connection.send_result(msg["id"])
@@ -203,16 +202,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN] = {
         "entry_id": entry.entry_id,
         "version": str(integration.version),
-        "clients": 0,
-        "notify": lambda: None,
         "card": card,
         "etag": etag,
     }
 
-    if not hass.data.get(DATA_HTTP):
+    if DATA_HTTP not in hass.data:
+        hass.data[DATA_HTTP] = {"clients": 0, "notify": lambda: None}
         hass.http.register_view(CardView())
         websocket_api.async_register_command(hass, ws_subscribe)
-        hass.data[DATA_HTTP] = True
 
     async def register_card(hass: HomeAssistant, _component: str) -> None:
         await _async_init_resource(hass, CARD_URL, etag)
