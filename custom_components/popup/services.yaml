@@ -37,6 +37,12 @@ open:
       selector:
         text:
           multiple: true
+    areas:
+      name: Areas
+      description: Only kiosks in these areas (name or id). A kiosk's user must be named like a device in the area.
+      selector:
+        area:
+          multiple: true
     title:
       name: Title
       selector:
@@ -69,4 +75,10 @@ close:
       description: Only browsers signed in as these users (name or id). Omit for everyone.
       selector:
         text:
+          multiple: true
+    areas:
+      name: Areas
+      description: Only kiosks in these areas (name or id).
+      selector:
+        area:
           multiple: true

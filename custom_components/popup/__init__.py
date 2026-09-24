@@ -21,7 +21,7 @@ from homeassistant.components.lovelace.resources import ResourceStorageCollectio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import area_registry as ar, config_validation as cv, device_registry as dr
 from homeassistant.loader import async_get_integration
 from homeassistant.setup import async_when_setup
 
@@ -57,6 +57,10 @@ OPEN_SCHEMA = vol.All(
             vol.Optional("close_on_tap", default=False): cv.boolean,
             # only browsers signed in as these users (id or name); default: all
             vol.Optional("users"): vol.All(cv.ensure_list, [cv.string]),
+            # or the users of kiosks in these areas (area id or name); a kiosk's
+            # user is matched to a device with the same name, and that device's
+            # area is the kiosk's area
+            vol.Optional("areas"): vol.All(cv.ensure_list, [cv.string]),
         }
     ),
     cv.has_at_least_one_key("card", "view", "message"),
@@ -65,6 +69,7 @@ CLOSE_SCHEMA = vol.Schema(
     {
         vol.Optional("id"): cv.string,
         vol.Optional("users"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("areas"): vol.All(cv.ensure_list, [cv.string]),
     }
 )
 
@@ -84,6 +89,27 @@ async def _resolve_users(hass: HomeAssistant, wanted: list[str] | None) -> list[
         else:
             _LOGGER.warning("popup: no user %r", item)
     return ids
+
+
+def _users_in_areas(hass: HomeAssistant, users, wanted: list[str]) -> list[str]:
+    """User ids of kiosks in the areas: a user named like a device in the area."""
+    areas = ar.async_get(hass)
+    area_ids: set[str] = set()
+    for item in wanted:
+        area = areas.async_get_area(item) or areas.async_get_area_by_name(item)
+        if area:
+            area_ids.add(area.id)
+        else:
+            _LOGGER.warning("popup: no area %r", item)
+    if not area_ids:
+        return []
+    names = {
+        (d.name_by_user or d.name or "").casefold()
+        for d in dr.async_get(hass).devices.values()
+        if d.area_id in area_ids
+    }
+    names.discard("")
+    return [u.id for u in users if u.name and u.name.casefold() in names]
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/subscribe"})
@@ -195,8 +221,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def _fire(event_type: str, call: ServiceCall) -> None:
         data = dict(call.data)
-        if "users" in data:
-            data["users"] = await _resolve_users(hass, data["users"])
+        if "users" in data or "areas" in data:
+            ids = await _resolve_users(hass, data.get("users")) or []
+            if data.get("areas"):
+                users = await hass.auth.async_get_users()
+                ids += _users_in_areas(hass, users, data.pop("areas"))
+            data["users"] = sorted(set(ids))
+            if not data["users"]:
+                _LOGGER.warning("popup: %s targets nobody", event_type)
+                return
         hass.bus.async_fire(event_type, data)
 
     async def handle_open(call: ServiceCall) -> None:
