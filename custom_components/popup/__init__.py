@@ -1,0 +1,188 @@
+"""Popup: show a Lovelace card as an overlay on every connected browser.
+
+A lightweight replacement for browser_mod popups. ``popup.open`` fires a bus
+event that authenticated frontends receive over ``popup/subscribe``; the
+frontend module renders the card in an overlay mounted inside Home Assistant's
+element tree, so the card's own tap actions work. ``popup.close`` removes it.
+Nothing is stored; a browser that connects later sees nothing.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+from pathlib import Path
+
+import voluptuous as vol
+from aiohttp import web
+from homeassistant.components import websocket_api
+from homeassistant.components.http import HomeAssistantView
+from homeassistant.components.lovelace.resources import ResourceStorageCollection
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
+from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
+from homeassistant.helpers import config_validation as cv
+from homeassistant.loader import async_get_integration
+from homeassistant.setup import async_when_setup
+
+from .const import (
+    CARD_FILENAME,
+    CARD_URL,
+    DOMAIN,
+    EVENT_CLOSE,
+    EVENT_OPEN,
+    SERVICE_CLOSE,
+    SERVICE_OPEN,
+)
+
+_LOGGER = logging.getLogger(__name__)
+PLATFORMS = [Platform.SENSOR]
+CARD_PATH = Path(__file__).parent / "www" / CARD_FILENAME
+DATA_HTTP = f"{DOMAIN}_http"  # views and the websocket command register once per process
+
+OPEN_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Required("id"): cv.string,
+            # one of: a card config (frontend-side data only; Home Assistant
+            # renders Jinja in service data, so cards with templates go via view)
+            vol.Optional("card"): dict,
+            # a dashboard view to render, e.g. "/lovelace/keypad"
+            vol.Optional("view"): cv.string,
+            # or just a message: a small banner at the bottom (default 5 s)
+            vol.Optional("message"): cv.string,
+            vol.Optional("title"): cv.string,
+            vol.Optional("dismissable", default=True): cv.boolean,
+            vol.Optional("timeout"): vol.All(vol.Coerce(float), vol.Range(min=1, max=3600)),
+            vol.Optional("close_on_tap", default=False): cv.boolean,
+        }
+    ),
+    cv.has_at_least_one_key("card", "view", "message"),
+)
+CLOSE_SCHEMA = vol.Schema({vol.Optional("id"): cv.string})
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/subscribe"})
+@websocket_api.async_response
+async def ws_subscribe(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Forward open/close events to an authenticated frontend (auth, not admin)."""
+
+    @callback
+    def forward(event: Event) -> None:
+        connection.send_message(
+            websocket_api.event_message(
+                msg["id"], {"event_type": event.event_type, "data": dict(event.data)}
+            )
+        )
+
+    unsubs = (
+        hass.bus.async_listen(EVENT_OPEN, forward),
+        hass.bus.async_listen(EVENT_CLOSE, forward),
+    )
+    data = hass.data.get(DOMAIN)
+    if data:
+        data["clients"] += 1
+        data["notify"]()
+
+    @callback
+    def unsub_all() -> None:
+        for unsubscribe in unsubs:
+            unsubscribe()
+        data = hass.data.get(DOMAIN)
+        if data:
+            data["clients"] -= 1
+            data["notify"]()
+
+    connection.subscriptions[msg["id"]] = unsub_all
+    connection.send_result(msg["id"])
+
+
+class CardView(HomeAssistantView):
+    """Serve the frontend module captured at setup, with an ETag."""
+
+    url = CARD_URL
+    name = f"{DOMAIN}:card"
+    requires_auth = False
+
+    async def get(self, request: web.Request) -> web.Response:
+        """Return the module, or 304 when the browser already has this build."""
+        data = request.app["hass"].data.get(DOMAIN)
+        if not data:
+            return web.Response(status=404)
+        card, etag = data["card"], data["etag"]
+        if any(tag.value in ("*", etag) for tag in (request.if_none_match or ())):
+            return web.Response(status=304, headers={"ETag": f'"{etag}"'})
+        return web.Response(
+            body=card,
+            content_type="application/javascript",
+            headers={"Cache-Control": "no-cache", "ETag": f'"{etag}"'},
+        )
+
+
+async def _async_init_resource(hass: HomeAssistant, url: str, version_tag: str) -> None:
+    """Keep a versioned module entry for ``url`` in the Lovelace resources.
+
+    The ``?v=`` tag changes with every build so cached module scripts (the
+    companion app's service worker ignores no-cache) are refetched.
+    """
+    target = f"{url}?v={version_tag}"
+    resources = getattr(hass.data.get("lovelace"), "resources", None)
+    if not isinstance(resources, ResourceStorageCollection):
+        _LOGGER.warning("Lovelace is in YAML mode; add '%s' as a module resource", target)
+        return
+    await resources.async_get_info()
+    for item in resources.async_items():
+        if item.get("url", "").split("?", 1)[0] != url:
+            continue
+        if item["url"] != target:
+            await resources.async_update_item(item["id"], {"res_type": "module", "url": target})
+        return
+    await resources.async_create_item({"res_type": "module", "url": target})
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up the single Popup entry."""
+    integration = await async_get_integration(hass, DOMAIN)
+    card = await hass.async_add_executor_job(CARD_PATH.read_bytes)
+    etag = f"{integration.version}-{hashlib.sha256(card).hexdigest()[:12]}"
+    hass.data[DOMAIN] = {
+        "entry_id": entry.entry_id,
+        "version": str(integration.version),
+        "clients": 0,
+        "notify": lambda: None,
+        "card": card,
+        "etag": etag,
+    }
+
+    if not hass.data.get(DATA_HTTP):
+        hass.http.register_view(CardView())
+        websocket_api.async_register_command(hass, ws_subscribe)
+        hass.data[DATA_HTTP] = True
+
+    async def register_card(hass: HomeAssistant, _component: str) -> None:
+        await _async_init_resource(hass, CARD_URL, etag)
+
+    async_when_setup(hass, "lovelace", register_card)
+
+    async def handle_open(call: ServiceCall) -> None:
+        hass.bus.async_fire(EVENT_OPEN, dict(call.data))
+
+    async def handle_close(call: ServiceCall) -> None:
+        hass.bus.async_fire(EVENT_CLOSE, dict(call.data))
+
+    hass.services.async_register(DOMAIN, SERVICE_OPEN, handle_open, OPEN_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_CLOSE, handle_close, CLOSE_SCHEMA)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload the Popup entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        hass.services.async_remove(DOMAIN, SERVICE_OPEN)
+        hass.services.async_remove(DOMAIN, SERVICE_CLOSE)
+        hass.data.pop(DOMAIN, None)
+    return unload_ok

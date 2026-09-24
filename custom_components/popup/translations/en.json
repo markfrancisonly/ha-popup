@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Popup",
+        "description": "Adds the popup.open and popup.close actions and loads the overlay module into every dashboard. Nothing else to configure."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Already configured. Only a single configuration is possible."
+    }
+  }
+}

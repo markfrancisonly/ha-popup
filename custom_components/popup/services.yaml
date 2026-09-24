@@ -1,0 +1,59 @@
+open:
+  name: Open
+  description: Show a Lovelace card as a popup on every connected browser.
+  fields:
+    id:
+      name: ID
+      description: Name of the popup; a later open with the same id replaces it, close needs it.
+      required: true
+      example: keypad
+      selector:
+        text:
+    card:
+      name: Card
+      description: Lovelace card configuration to render (no Jinja; use a view for cards with templates).
+      selector:
+        object:
+    view:
+      name: View
+      description: Dashboard view to render instead of a card, e.g. /lovelace/keypad.
+      example: /lovelace/keypad
+      selector:
+        text:
+    message:
+      name: Message
+      description: Text only, shown as a small banner at the bottom (a toast).
+      selector:
+        text:
+    close_on_tap:
+      name: Close on tap
+      description: Any tap inside the card closes the popup after the tap's action.
+      selector:
+        boolean:
+    title:
+      name: Title
+      selector:
+        text:
+    dismissable:
+      name: Dismissable
+      description: Tap outside or Escape closes it (default true).
+      selector:
+        boolean:
+    timeout:
+      name: Timeout
+      description: Close by itself after this many seconds.
+      selector:
+        number:
+          min: 1
+          max: 3600
+          unit_of_measurement: s
+close:
+  name: Close
+  description: Close a popup on every connected browser.
+  fields:
+    id:
+      name: ID
+      description: The popup to close; omit to close whatever is open.
+      example: keypad
+      selector:
+        text:
