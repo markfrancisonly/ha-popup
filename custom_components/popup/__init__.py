@@ -55,11 +55,35 @@ OPEN_SCHEMA = vol.All(
             vol.Optional("dismissable", default=True): cv.boolean,
             vol.Optional("timeout"): vol.All(vol.Coerce(float), vol.Range(min=1, max=3600)),
             vol.Optional("close_on_tap", default=False): cv.boolean,
+            # only browsers signed in as these users (id or name); default: all
+            vol.Optional("users"): vol.All(cv.ensure_list, [cv.string]),
         }
     ),
     cv.has_at_least_one_key("card", "view", "message"),
 )
-CLOSE_SCHEMA = vol.Schema({vol.Optional("id"): cv.string})
+CLOSE_SCHEMA = vol.Schema(
+    {
+        vol.Optional("id"): cv.string,
+        vol.Optional("users"): vol.All(cv.ensure_list, [cv.string]),
+    }
+)
+
+
+async def _resolve_users(hass: HomeAssistant, wanted: list[str] | None) -> list[str] | None:
+    """Turn user ids or names into user ids; unknown names are logged and dropped."""
+    if not wanted:
+        return None
+    users = await hass.auth.async_get_users()
+    by_key = {u.id: u.id for u in users}
+    by_key.update({(u.name or "").casefold(): u.id for u in users if u.name})
+    ids = []
+    for item in wanted:
+        uid = by_key.get(item) or by_key.get(item.casefold())
+        if uid:
+            ids.append(uid)
+        else:
+            _LOGGER.warning("popup: no user %r", item)
+    return ids
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/subscribe"})
@@ -71,6 +95,9 @@ async def ws_subscribe(
 
     @callback
     def forward(event: Event) -> None:
+        targets = event.data.get("users")
+        if targets and connection.user.id not in targets:
+            return
         connection.send_message(
             websocket_api.event_message(
                 msg["id"], {"event_type": event.event_type, "data": dict(event.data)}
@@ -166,11 +193,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async_when_setup(hass, "lovelace", register_card)
 
+    async def _fire(event_type: str, call: ServiceCall) -> None:
+        data = dict(call.data)
+        if "users" in data:
+            data["users"] = await _resolve_users(hass, data["users"])
+        hass.bus.async_fire(event_type, data)
+
     async def handle_open(call: ServiceCall) -> None:
-        hass.bus.async_fire(EVENT_OPEN, dict(call.data))
+        await _fire(EVENT_OPEN, call)
 
     async def handle_close(call: ServiceCall) -> None:
-        hass.bus.async_fire(EVENT_CLOSE, dict(call.data))
+        await _fire(EVENT_CLOSE, call)
 
     hass.services.async_register(DOMAIN, SERVICE_OPEN, handle_open, OPEN_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_CLOSE, handle_close, CLOSE_SCHEMA)

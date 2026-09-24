@@ -25,8 +25,9 @@ module registers itself as a dashboard resource.
 | `dismissable` | tap outside or Escape closes it (default `true`) |
 | `timeout` | close by itself after this many seconds |
 | `close_on_tap` | any tap inside the card closes the popup after the tap's action (menus of one-shot buttons) |
+| `users` | only browsers signed in as these Home Assistant users, by name or id; omit for everyone. Kiosks each signed in as their own user are addressed this way |
 
-`popup.close` with an optional `id` closes it everywhere.
+`popup.close` with an optional `id` closes it everywhere, or only for `users`.
 
 ```yaml
 action: popup.open
@@ -42,6 +43,7 @@ data:
   id: garage
   message: Closing garage doors
   timeout: 13
+  users: [Kitchen wallpanel]
 ```
 
 ### Local popups from a dashboard
