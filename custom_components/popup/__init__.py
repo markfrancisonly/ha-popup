@@ -57,7 +57,7 @@ OPEN_SCHEMA = vol.All(
             vol.Optional("dismissable", default=True): cv.boolean,
             vol.Optional("timeout"): vol.All(vol.Coerce(float), vol.Range(min=1, max=3600)),
             vol.Optional("close_on_tap", default=False): cv.boolean,
-            # CSS length for the box, e.g. "360px" or "50vw" (default min(96vw, 720px))
+            # CSS length for the box, e.g. "400px" or "50vw" (default: full width)
             vol.Optional("width"): cv.string,
             # only browsers signed in as these users (id or name); default: all
             vol.Optional("users"): vol.All(cv.ensure_list, [cv.string]),

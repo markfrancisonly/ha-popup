@@ -39,8 +39,8 @@ open:
           multiple: true
     width:
       name: Width
-      description: Width of the popup as a CSS length, e.g. 360px or 50vw. Default fits the screen up to 720px.
-      example: 360px
+      description: Width of the popup as a CSS length, e.g. 400px or 50vw. Default is the full width of the screen.
+      example: 400px
       selector:
         text:
     areas:

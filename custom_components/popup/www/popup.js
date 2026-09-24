@@ -67,7 +67,7 @@
         const box = document.createElement('div');
         box.style.cssText =
             'background:var(--card-background-color,#111);color:var(--primary-text-color);' +
-            `border-radius:12px;max-width:${width || 'min(96vw,720px)'};max-height:96vh;width:100%;` +
+            `border-radius:12px;max-width:${width || 'none'};max-height:96vh;width:100%;` +
             'overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,.6);';
         if (title) {
             const h = document.createElement('div');
