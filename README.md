@@ -22,7 +22,7 @@ module registers itself as a dashboard resource.
 | `view` | a dashboard view to render instead, e.g. `/lovelace/keypad`; resolved in the browser, so templates inside its cards work |
 | `message` | text only, shown as a small banner at the bottom (a toast), 5 s by default |
 | `title` | optional heading |
-| `dismissable` | tap outside or Escape closes it (default `true`) |
+| `dismissable` | shows an X in the header; tap outside or Escape closes it too (default `true`) |
 | `timeout` | close by itself after this many seconds |
 | `close_on_tap` | any tap inside the card closes the popup after the tap's action (menus of one-shot buttons) |
 | `width` | CSS length for the box, e.g. `400px` or `50vw`; default is the full width of the screen |

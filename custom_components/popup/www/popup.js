@@ -69,10 +69,21 @@
             'background:var(--card-background-color,#111);color:var(--primary-text-color);' +
             `border-radius:12px;max-width:${width || 'none'};max-height:96vh;width:100%;` +
             'overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,.6);';
-        if (title) {
+        if (title || dismissable) {
             const h = document.createElement('div');
-            h.textContent = title;
-            h.style.cssText = 'font-size:20px;font-weight:500;padding:16px 16px 0;';
+            h.style.cssText = 'display:flex;align-items:center;padding:12px 8px 0 16px;min-height:24px;';
+            const t = document.createElement('div');
+            t.textContent = title || '';
+            t.style.cssText = 'flex:1;font-size:20px;font-weight:500;';
+            h.appendChild(t);
+            if (dismissable) {
+                const x = document.createElement('button');
+                x.setAttribute('aria-label', 'Close');
+                x.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
+                x.style.cssText = 'flex:none;width:44px;height:44px;border:0;border-radius:50%;background:none;color:var(--secondary-text-color,#aaa);cursor:pointer;display:flex;align-items:center;justify-content:center;';
+                x.addEventListener('click', (ev) => { ev.stopPropagation(); close(); });
+                h.appendChild(x);
+            }
             box.appendChild(h);
         }
         const body = document.createElement('div');
