@@ -57,6 +57,8 @@ OPEN_SCHEMA = vol.All(
             vol.Optional("dismissable", default=True): cv.boolean,
             vol.Optional("timeout"): vol.All(vol.Coerce(float), vol.Range(min=1, max=3600)),
             vol.Optional("close_on_tap", default=False): cv.boolean,
+            # CSS length for the box, e.g. "360px" or "50vw" (default min(96vw, 720px))
+            vol.Optional("width"): cv.string,
             # only browsers signed in as these users (id or name); default: all
             vol.Optional("users"): vol.All(cv.ensure_list, [cv.string]),
             # or the users of kiosks in these areas (area id or name); a kiosk's

@@ -37,6 +37,12 @@ open:
       selector:
         text:
           multiple: true
+    width:
+      name: Width
+      description: Width of the popup as a CSS length, e.g. 360px or 50vw. Default fits the screen up to 720px.
+      example: 360px
+      selector:
+        text:
     areas:
       name: Areas
       description: Only kiosks in these areas (name or id). A kiosk's user must be named like a device in the area.

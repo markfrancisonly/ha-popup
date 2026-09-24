@@ -25,6 +25,7 @@ module registers itself as a dashboard resource.
 | `dismissable` | tap outside or Escape closes it (default `true`) |
 | `timeout` | close by itself after this many seconds |
 | `close_on_tap` | any tap inside the card closes the popup after the tap's action (menus of one-shot buttons) |
+| `width` | CSS length for the box, e.g. `360px` or `50vw`; default fits the screen up to 720 px |
 | `users` | only browsers signed in as these Home Assistant users, by name or id; omit for everyone. Kiosks each signed in as their own user are addressed this way |
 | `areas` | only kiosks in these areas, by name or id. A browser has no area of its own, so a kiosk's user is matched to a device with the same name (the kiosk app's device, say), and that device's area counts. Combines with `users` |
 
